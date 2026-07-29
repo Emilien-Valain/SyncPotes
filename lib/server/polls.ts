@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { Effect } from "effect";
-import type { ParticipantDTO, PollDTO } from "../api-types";
+import type { MeDTO, ParticipantDTO, PollDTO } from "../api-types";
 import { computeHeatmap, pollHours, type HeatParticipant } from "../heatmap";
 import { Db } from "./db";
 import { GoogleCalendar } from "./google";
@@ -155,6 +155,21 @@ export const listParticipants = (slug: string, meId?: string) =>
       id: p.id, name: p.name, mode: p.mode, organizer: p.organizer,
       freeCount: p.free.size, isMe: p.id === meId,
     }));
+  });
+
+// The caller's own row, slots included, so the client can pre-fill an edit
+// rather than make them repaint from scratch. Resolves undefined when the
+// cookie points at a row that is gone (removed, or the Poll was recreated).
+export const getMe = (slug: string, meId: string) =>
+  Effect.gen(function* () {
+    const poll = yield* getPoll(slug);
+    const participants = yield* loadParticipants(poll);
+    const me = participants.find((p) => p.id === meId);
+    if (!me) return undefined;
+    return {
+      id: me.id, name: me.name, mode: me.mode, organizer: me.organizer,
+      free: [...me.free],
+    } satisfies MeDTO;
   });
 
 const insertFreeSlots = (participantId: string, poll: PollDTO, keys: string[]) =>

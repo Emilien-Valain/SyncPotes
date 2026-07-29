@@ -61,3 +61,18 @@ export interface ParticipantDTO {
   /** True for the row the requesting browser owns — the only one it may remove. */
   isMe: boolean;
 }
+
+/**
+ * The caller's own row, including the slots themselves so the client can
+ * pre-fill an edit. Only ever returned for the row the sp_me_<slug> cookie
+ * owns: one participant's full availability is more than the grid discloses,
+ * so it is never part of the public heatmap payload.
+ */
+export interface MeDTO {
+  id: string;
+  name: string;
+  mode: ParticipantMode;
+  organizer: boolean;
+  /** Slot keys, "di-hi", indexing poll.dates and hours. */
+  free: string[];
+}

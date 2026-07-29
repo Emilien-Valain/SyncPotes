@@ -52,6 +52,9 @@ const base = {
 } as const;
 
 export function markOrganizer(res: NextResponse, slug: string): NextResponse {
+  // False positive: SameSite is "lax" via `base` above; the rule is Koa-shaped
+  // and cannot see through the spread.
+  // nosemgrep: javascript.koa.web.cookies-samesite-missing-koa.cookies-samesite-missing-koa
   res.cookies.set(ORG(slug), "1", { ...base, maxAge: MAX_AGE });
   return res;
 }
@@ -62,6 +65,8 @@ export function markParticipant(res: NextResponse, slug: string, id: string): Ne
 }
 
 export function clearParticipant(res: NextResponse, slug: string): NextResponse {
+  // False positive: see markOrganizer.
+  // nosemgrep: javascript.koa.web.cookies-samesite-missing-koa.cookies-samesite-missing-koa
   res.cookies.set(ME(slug), "", { ...base, maxAge: 0 });
   return res;
 }

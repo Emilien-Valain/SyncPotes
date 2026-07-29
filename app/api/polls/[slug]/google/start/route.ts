@@ -19,6 +19,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const result = await runData(program);
   if (result.ok) return NextResponse.redirect(result.value);
 
+  // Not an open redirect: the target is this request's own origin plus a fixed
+  // /p/<slug> path, and the slug is encoded. No attacker-chosen host or path can
+  // reach the Location header.
   const origin = new URL(req.url).origin;
+  // nosemgrep: javascript.hapi.web.tainted-redirect-hapi.tainted-redirect-hapi
   return NextResponse.redirect(`${origin}/p/${encodeURIComponent(slug)}?join=failed`);
 }

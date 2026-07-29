@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
-import type { HeatmapDTO, ParticipantDTO, SlotNameDTO } from "@/lib/api-types";
+import type { HeatmapDTO, MeDTO, ParticipantDTO, SlotNameDTO } from "@/lib/api-types";
 import { Shell, card, dayLabel, ghostBtn, primaryBtn } from "./ui";
 
 interface Props {
@@ -33,6 +33,11 @@ export default function PollView({ initial, initialParticipants, slug, created, 
   const [manualName, setManualName] = useState("");
   const [paint, setPaint] = useState<Record<string, true>>({});
   const [copied, setCopied] = useState(false);
+  // The manual overlay does double duty: first join, and editing an existing
+  // row. Only the wording and the toast differ — joinManual already updates in
+  // place for a browser that owns a row.
+  const [editing, setEditing] = useState(false);
+  const [loadingMe, setLoadingMe] = useState(false);
 
   const poll = heatmap.poll;
   const hours = heatmap.hours;
@@ -43,7 +48,6 @@ export default function PollView({ initial, initialParticipants, slug, created, 
   // this browser owns (HttpOnly cookie), so it stays right after "remove me"
   // and across devices.
   const me = participants.find((p) => p.isMe);
-  const joined = me !== undefined;
 
   useEffect(() => {
     if (!toast) return;
@@ -91,6 +95,32 @@ export default function PollView({ initial, initialParticipants, slug, created, 
     });
   };
 
+  function openJoin() {
+    setEditing(false);
+    setPaint({});
+    setOverlay("manual");
+  }
+
+  // Pre-fill from the server rather than from the heatmap: cells below the
+  // threshold are withheld from the grid, so reconstructing "my" slots
+  // client-side would silently drop the ones I could least afford to lose.
+  async function openEdit() {
+    setLoadingMe(true);
+    try {
+      const res = await fetch(`/api/polls/${slug}/me`);
+      if (!res.ok) return setToast("Impossible de charger tes dispos, réessaie.");
+      const mine = (await res.json()) as MeDTO;
+      setManualName(mine.name);
+      setPaint(Object.fromEntries(mine.free.map((k) => [k, true])) as Record<string, true>);
+      setEditing(true);
+      setOverlay("manual");
+    } catch {
+      setToast("Impossible de charger tes dispos, réessaie.");
+    } finally {
+      setLoadingMe(false);
+    }
+  }
+
   async function submitManual() {
     const name = manualName.trim();
     if (!name) return setToast("Mets ton prénom d'abord.");
@@ -102,7 +132,8 @@ export default function PollView({ initial, initialParticipants, slug, created, 
     });
     if (!res.ok) return setToast("Envoi impossible, réessaie.");
     setOverlay("none");
-    setToast("Tes dispos sont dans la carte.");
+    setToast(editing ? "Tes dispos sont à jour." : "Tes dispos sont dans la carte.");
+    setEditing(false);
     void refetch(threshold);
   }
 
@@ -158,14 +189,32 @@ export default function PollView({ initial, initialParticipants, slug, created, 
           </div>
         </div>
 
-        {!joined && (
+        {!me ? (
           <div style={{ ...card(20, "16px"), marginTop: "18px", display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
             <div style={{ flex: 1, minWidth: "180px" }}>
               <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "18px" }}>Ajoute tes dispos</div>
               <div style={{ fontSize: "13px", color: "var(--ink2)" }}>On lit occupé/libre, jamais le pourquoi.</div>
             </div>
             <a href={`/api/polls/${slug}/google/start`} style={{ ...primaryBtn, width: "auto", padding: "13px 16px", fontSize: "15px", textDecoration: "none" }}>Connecter Google</a>
-            <button onClick={() => setOverlay("manual")} style={{ ...ghostBtn, width: "auto", padding: "13px 16px", fontSize: "14px" }}>À la main</button>
+            <button onClick={openJoin} style={{ ...ghostBtn, width: "auto", padding: "13px 16px", fontSize: "14px" }}>À la main</button>
+          </div>
+        ) : (
+          // Joined: the same slot keeps carrying the affordance, otherwise the
+          // only route back to the update path is remove-me-and-rejoin.
+          <div style={{ ...card(20, "16px"), marginTop: "18px", display: "flex", gap: "12px", flexWrap: "wrap", alignItems: "center" }}>
+            <div style={{ flex: 1, minWidth: "180px" }}>
+              <div style={{ fontFamily: "var(--font-display)", fontWeight: 700, fontSize: "18px" }}>Tes dispos sont dans la carte</div>
+              <div style={{ fontSize: "13px", color: "var(--ink2)" }}>
+                {me.freeCount} créneau{me.freeCount > 1 ? "x" : ""} · {me.mode === "google" ? "agenda synchronisé" : `peint${me.freeCount > 1 ? "s" : ""} à la main`}
+              </div>
+            </div>
+            {me.mode === "google" && (
+              <a href={`/api/polls/${slug}/google/start`} style={{ ...primaryBtn, width: "auto", padding: "13px 16px", fontSize: "15px", textDecoration: "none" }}>Resynchroniser</a>
+            )}
+            <button onClick={openEdit} disabled={loadingMe}
+              style={{ ...(me.mode === "google" ? ghostBtn : primaryBtn), width: "auto", padding: "13px 16px", fontSize: me.mode === "google" ? "14px" : "15px", opacity: loadingMe ? 0.6 : 1 }}>
+              {loadingMe ? "Chargement…" : me.mode === "google" ? "Ajuster à la main" : "Modifier mes dispos"}
+            </button>
           </div>
         )}
 
@@ -295,7 +344,14 @@ export default function PollView({ initial, initialParticipants, slug, created, 
 
       {overlay === "manual" && (
         <Overlay onClose={() => setOverlay("none")}>
-          <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "28px", lineHeight: ".96", letterSpacing: "-0.03em", margin: "0 0 14px" }}>Peins tes soirées libres.</h3>
+          <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "28px", lineHeight: ".96", letterSpacing: "-0.03em", margin: "0 0 14px" }}>
+            {editing ? "Ajuste tes soirées libres." : "Peins tes soirées libres."}
+          </h3>
+          {editing && me?.mode === "google" && (
+            <p style={{ margin: "-6px 0 14px", fontSize: "13px", color: "var(--ink2)", textWrap: "pretty" }}>
+              Tes créneaux Google sont déjà peints. En envoyant, tu passes à la main : ils ne se resynchroniseront plus tout seuls.
+            </p>
+          )}
           <input value={manualName} onChange={(e) => setManualName(e.target.value)} placeholder="Ton prénom"
             style={{ width: "100%", border: 0, borderBottom: "2px solid var(--line)", background: "none", padding: "3px 0 9px", fontFamily: "var(--font-display)", fontSize: "20px", fontWeight: 700, outline: "none", marginBottom: "14px" }} />
           <div style={{ display: "grid", gridTemplateColumns: "44px repeat(" + hours.length + ",minmax(0,1fr))", gap: "5px", marginBottom: "5px" }}>
@@ -325,7 +381,9 @@ export default function PollView({ initial, initialParticipants, slug, created, 
               );
             })}
           </div>
-          <button onClick={submitManual} style={{ ...primaryBtn, marginTop: "14px" }}>Envoyer mes dispos</button>
+          <button onClick={submitManual} style={{ ...primaryBtn, marginTop: "14px" }}>
+            {editing ? "Mettre à jour mes dispos" : "Envoyer mes dispos"}
+          </button>
         </Overlay>
       )}
 

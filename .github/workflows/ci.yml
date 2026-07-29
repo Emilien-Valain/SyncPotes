@@ -1,0 +1,62 @@
+name: CI
+
+# The pre-commit hook skips Semgrep when it isn't installed, so a machine without
+# it commits green with no policy enforcement at all. This is the backstop that
+# actually runs unconditionally — keep it that way: no `continue-on-error`, no
+# conditional skips on the semgrep job.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - run: npm ci
+
+      # Tests and the type-check are pure — no Postgres, no Google. The build
+      # prerenders only / and /demo; /p/[slug] is force-dynamic.
+      - name: Unit tests
+        run: npm test
+
+      - name: Type-check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npx eslint .
+
+      - name: Build
+        run: npm run build
+
+  policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: pip install semgrep
+
+      # Canaries first: if a rule stopped matching its own deliberate violation,
+      # the scan below proves nothing. See docs/semgrep-canaries/README.md.
+      - name: Semgrep canaries
+        run: npm run semgrep:canary
+
+      - name: Semgrep scan
+        run: npm run semgrep

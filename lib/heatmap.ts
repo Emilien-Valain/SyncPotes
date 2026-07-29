@@ -56,6 +56,17 @@ export function computeHeatmap(
   const maxCount = Math.max(0, ...visible.map((s) => s.ids.length));
   const hidden = flat.length - visible.length;
 
+  // The headline cards are capped at 3, and the grid's highlight ring marks
+  // exactly those same slots. Ringing every slot tied at maxCount instead reads
+  // as noise the moment a Poll is young — one person free all week ties
+  // everywhere, and the whole grid lights up saying nothing.
+  const best: BestSlotDTO[] = visible
+    .filter((s) => s.ids.length === maxCount)
+    .slice(0, 3)
+    .map((s) => ({ di: s.di, hi: s.hi, count: s.ids.length, names: s.ids }));
+
+  const bestKeys = new Set(best.map((b) => `${b.di}-${b.hi}`));
+
   const rows: HeatRowDTO[] = poll.dates.map((date, di) => ({
     date,
     cells: slots[di].map<HeatCellDTO>((s) => ({
@@ -63,15 +74,10 @@ export function computeHeatmap(
       hi: s.hi,
       count: s.vis ? s.ids.length : 0,
       lvl: s.vis ? Math.min(5, s.ids.length) : 0,
-      best: s.vis && s.ids.length === maxCount,
+      best: s.vis && bestKeys.has(`${s.di}-${s.hi}`),
       names: s.vis ? s.ids : [],
     })),
   }));
-
-  const best: BestSlotDTO[] = visible
-    .filter((s) => s.ids.length === maxCount)
-    .slice(0, 3)
-    .map((s) => ({ di: s.di, hi: s.hi, count: s.ids.length, names: s.ids }));
 
   return {
     poll,

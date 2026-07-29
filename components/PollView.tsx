@@ -221,7 +221,12 @@ export default function PollView({ initial, initialParticipants, slug, created, 
         {view === "heat" && (
           <>
             {best.length > 0 && (
-              <div style={{ marginTop: "20px", display: "flex", gap: "12px", overflowX: "auto", scrollbarWidth: "none", paddingBottom: "4px" }}>
+              // The best-slot ring is a box-shadow drawn 4px outside the card,
+              // and `overflow-x: auto` computes overflow-y to auto as well, so a
+              // flush card gets its ring shaved on the top, left and bottom.
+              // Pad the scroll box by more than the ring and pull the padding
+              // back out with negative margins so the cards stay aligned.
+              <div style={{ marginTop: "12px", marginLeft: "-8px", marginRight: "-8px", padding: "8px 8px 12px", display: "flex", gap: "12px", overflowX: "auto", scrollbarWidth: "none" }}>
                 {best.map((b) => (
                   <button key={`${b.di}-${b.hi}`} onClick={() => openCell(b.di, b.hi, b.count, Math.min(5, b.count), b.names)} data-lvl={String(Math.min(5, b.count))} data-best={b.hero ? "1" : "0"}
                     style={{ flexShrink: 0, width: "238px", borderRadius: 20, padding: "16px", textAlign: "left", animation: "pop .5s ease both" }}>
@@ -345,7 +350,7 @@ export default function PollView({ initial, initialParticipants, slug, created, 
       {overlay === "manual" && (
         <Overlay onClose={() => setOverlay("none")}>
           <h3 style={{ fontFamily: "var(--font-display)", fontWeight: 800, fontSize: "28px", lineHeight: ".96", letterSpacing: "-0.03em", margin: "0 0 14px" }}>
-            {editing ? "Ajuste tes soirées libres." : "Peins tes soirées libres."}
+            {editing ? "Ajuste tes dispos." : "Donne tes dispos."}
           </h3>
           {editing && me?.mode === "google" && (
             <p style={{ margin: "-6px 0 14px", fontSize: "13px", color: "var(--ink2)", textWrap: "pretty" }}>

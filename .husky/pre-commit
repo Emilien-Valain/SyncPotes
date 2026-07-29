@@ -2,7 +2,8 @@
 # Lint staged TS/TSX, then run Semgrep on the whole tree.
 #
 # Semgrep is optional locally: if it isn't installed we skip it rather than block
-# the commit (CI runs it unconditionally). Note the consequence — a machine
+# the commit. The backstop is .github/workflows/ci.yml, whose `policy` job runs
+# it unconditionally on every push and PR. Note the local consequence — a machine
 # without Semgrep gets a green commit with zero policy enforcement, so treat the
 # skip notice below as "unprotected", not "clean".
 #

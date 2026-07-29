@@ -90,6 +90,21 @@ describe("computeHeatmap", () => {
     assert.equal(cell(h, 0, 1).best, false);
   });
 
+  it("rings at most the three slots shown as headline cards", () => {
+    // One person free all week: every visible slot ties at maxCount. Marking
+    // them all lit the entire grid with the highlight ring, which conveys
+    // nothing. The ring must track the (capped) headline cards instead.
+    const h = computeHeatmap(poll(), [person("a", "0-0", "0-1", "0-2", "1-0", "1-1")], 1);
+    const ringed = h.rows.flatMap((r) => r.cells).filter((c) => c.best);
+    assert.equal(h.maxCount, 1);
+    assert.equal(ringed.length, 3, "capped at three, not one per tied slot");
+    assert.deepEqual(
+      ringed.map((c) => `${c.di}-${c.hi}`),
+      h.best.map((b) => `${b.di}-${b.hi}`),
+      "the ringed cells are exactly the headline cards",
+    );
+  });
+
   it("never lets a hidden slot win, even when it has the most people", () => {
     // 3 free at 0-0 but the Threshold is 4: nothing is visible, so nothing wins.
     const h = computeHeatmap(

@@ -1,0 +1,67 @@
+# SyncPotes guardrails. These encode the two promises the product cannot break
+# without a deliberate architectural decision (see CONTEXT.md and docs/adr/).
+#
+# The code talks to Google over plain `fetch` (lib/server/google.ts), NOT the
+# googleapis SDK, so every rule here has to match URL and scope strings as well
+# as SDK call shapes. Canary files proving each pattern actually fires live in
+# docs/semgrep-canaries/ — run `npm run semgrep:canary` after editing this file.
+
+rules:
+  - id: no-calendar-event-content
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      SyncPotes must never read Google Calendar event content (titles, attendees,
+      locations, descriptions). Only free/busy intervals may be requested. This
+      matched either an events endpoint/SDK call or a calendar scope broader than
+      calendar.freebusy — both hand you event bodies. If you need event data,
+      stop: that violates the product's core privacy promise (see CONTEXT.md and
+      the design brief).
+    pattern-either:
+      # googleapis SDK shape — unused today, but cheap to keep guarding.
+      - pattern: $CAL.events.list(...)
+      - pattern: $CAL.events.get(...)
+      - pattern: $CAL.events.instances(...)
+      - pattern: $CAL.events.watch(...)
+      # Raw REST shape — how this codebase actually calls Google.
+      #   /calendar/v3/calendars/{id}/events   and   /calendar/v3/events
+      - pattern-regex: calendar/v3/calendars/[^"'`\s]*/events
+      - pattern-regex: calendar/v3/events
+      # Any calendar scope that is not freebusy: calendar.readonly,
+      # calendar.events(.readonly), or bare .../auth/calendar.
+      - pattern-regex: auth/calendar(?!\.freebusy)
+
+  - id: no-refresh-token-persistence-v1
+    languages: [typescript, javascript]
+    severity: ERROR
+    message: >
+      v1 is the ephemeral event-poll model and deliberately does NOT obtain or
+      store Google OAuth refresh tokens (that's the v2 ambient-sync door — see
+      the ADR roadmap). This matched either access_type=offline (which is what
+      mints a refresh token in the first place) or a refresh token reaching the
+      database. Either one is a real architectural change; make it on purpose,
+      not by accident.
+    pattern-either:
+      # The consent-URL switch that makes Google issue a refresh token.
+      # lib/server/google.ts pins access_type: "online" — keep it that way.
+      - pattern-regex: access_type["'\s]*[:=][\s"']*offline
+      # A refresh token reaching persistence, in code or in inline SQL.
+      - patterns:
+          - pattern-regex: refresh_?[Tt]oken
+          - pattern-inside: |
+              $DB.$METHOD(...)
+
+  # SQL is not TypeScript, so the rule above cannot see db/schema.sql. Guard the
+  # schema separately: a refresh-token column is the durable form of the same
+  # mistake, and it outlives whatever code wrote to it.
+  - id: no-refresh-token-column
+    languages: [generic]
+    severity: ERROR
+    paths:
+      include:
+        - "*.sql"
+    message: >
+      A refresh-token column in the schema is the v2 ambient-sync door (see the
+      ADR roadmap). v1 persists only derived free/busy at grid resolution — no
+      event content, no long-lived Google credentials.
+    pattern-regex: refresh_?[Tt]oken

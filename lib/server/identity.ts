@@ -18,6 +18,9 @@ import type { NextResponse } from "next/server";
 
 const ORG = (slug: string) => `sp_org_${slug}`;
 const ME = (slug: string) => `sp_me_${slug}`;
+// Holds the pending OAuth nonce for one Poll. Per-Poll, so starting a second
+// consent flow in another tab does not invalidate the first.
+const OAUTH = (slug: string) => `sp_oauth_${slug}`;
 
 // Long enough to outlive any Poll (they self-delete 7 days after their last
 // date), short enough not to linger forever in a shared browser.
@@ -68,5 +71,30 @@ export function clearParticipant(res: NextResponse, slug: string): NextResponse 
   // False positive: see markOrganizer.
   // nosemgrep: javascript.koa.web.cookies-samesite-missing-koa.cookies-samesite-missing-koa
   res.cookies.set(ME(slug), "", { ...base, maxAge: 0 });
+  return res;
+}
+
+// One consent screen, not one session: long enough for a friend to pick an
+// account and read the warning, short enough that a stale nonce is useless.
+const OAUTH_MAX_AGE = 60 * 10;
+
+/** Remember the nonce we just put into an outgoing OAuth `state`. */
+export function markOauthState(res: NextResponse, slug: string, nonce: string): NextResponse {
+  // False positive: see markOrganizer.
+  // nosemgrep: javascript.koa.web.cookies-samesite-missing-koa.cookies-samesite-missing-koa
+  res.cookies.set(OAUTH(slug), nonce, { ...base, maxAge: OAUTH_MAX_AGE });
+  return res;
+}
+
+/** The nonce this browser is waiting on for `slug`, or undefined. */
+export async function readOauthNonce(slug: string): Promise<string | undefined> {
+  return (await cookies()).get(OAUTH(slug))?.value;
+}
+
+/** Burn the nonce — one `state` must not be replayable. */
+export function clearOauthState(res: NextResponse, slug: string): NextResponse {
+  // False positive: see markOrganizer.
+  // nosemgrep: javascript.koa.web.cookies-samesite-missing-koa.cookies-samesite-missing-koa
+  res.cookies.set(OAUTH(slug), "", { ...base, maxAge: 0 });
   return res;
 }

@@ -36,15 +36,22 @@ visual direction live in [`docs/design-brief.md`](./docs/design-brief.md).
   and cascade, all exercised against a real database, plus the 400/403/404/410
   error paths. **The Google leg is still unexercised** — it needs a real OAuth
   app; only its config-error path (`500 server misconfigured: GOOGLE_CLIENT_ID`)
-  has been hit.
+  has been hit. [`docs/deployment.md`](./docs/deployment.md) creates the OAuth
+  app and lists what to check once it exists.
 
 ### Identity without accounts
 
 Participant ids are public — they ship inside every heatmap cell — so the caller
-is identified by two HttpOnly, per-Poll cookies (`sp_org_<slug>`,
-`sp_me_<slug>`) rather than by anything in the request body. That is what makes
-the Organizer badge, "remove me", and idempotent re-joins safe. See
+is identified by HttpOnly, per-Poll cookies (`sp_org_<slug>`, `sp_me_<slug>`)
+rather than by anything in the request body. That is what makes the Organizer
+badge, "remove me", and idempotent re-joins safe. See
 [`docs/adr/0002-cookie-scoped-participant-identity.md`](./docs/adr/0002-cookie-scoped-participant-identity.md).
+
+A third cookie, `sp_oauth_<slug>`, holds a one-shot nonce for the Google consent
+flow. The OAuth `state` parameter carries `<nonce>:<slug>`, and the callback
+refuses any `state` whose nonce does not match the cookie. Without that check a
+forged callback would attach a stranger's calendar to the victim's browser and
+delete the row it owned — see the comment in `lib/server/oauth-state.ts`.
 
 ### Backend shape
 
@@ -55,6 +62,7 @@ lib/server/
   google.ts    GoogleCalendar service — authUrl / exchangeCode / freeBusy over fetch
   time.ts      timezone → UTC slot math; busy intervals → free-slot set
   identity.ts  per-Poll HttpOnly cookies → JoinContext (see ADR-0002)
+  oauth-state.ts  pure `state` codec + nonce compare, guarding the OAuth callback
   polls.ts     domain programs (createPoll, getPoll, getHeatmap, joinManual, joinGoogle,
                removeParticipant, cleanup)
   runtime.ts   ManagedRuntime + exhaustive typed-error → Response mapping
@@ -76,6 +84,10 @@ never OAuth refresh tokens (v1 uses `access_type=online`). The Semgrep rules in
 cp .env.example .env.local     # fill in Google creds, DATABASE_URL, CRON_SECRET
 npm run db:setup               # apply db/schema.sql to $DATABASE_URL
 ```
+
+To deploy, follow [`docs/deployment.md`](./docs/deployment.md). It covers Vercel,
+Neon Postgres, the Google OAuth client, the cron secret, and the audience choice
+that decides who can join with Google.
 
 > Verified: `npm install` + `next build` pass cleanly on Next.js 15.5.22
 > (type-checked, lint-clean, all routes prerendered). The critical Next.js CVE in
@@ -103,4 +115,7 @@ npm test           # unit tests for the pure slot/heatmap logic
 Next.js (App Router) · React 19 · TypeScript · Vercel-ready. Tooling: ESLint,
 Husky + lint-staged, Semgrep (`.semgrep.yml` includes SyncPotes-specific privacy
 rules — no reading of calendar event content, no refresh-token persistence in
-v1). Install Semgrep separately: `pipx install semgrep`.
+v1). Install Semgrep separately: `uv tool install semgrep`, or `pipx install
+semgrep` where pipx is available. CI installs it with pip.
+
+Deployment: see [`docs/deployment.md`](./docs/deployment.md).
